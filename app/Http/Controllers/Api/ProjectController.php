@@ -54,24 +54,31 @@ class ProjectController extends Controller
                 ], 422);
             }
 
-            if($request->hasFile('file')){
-                $file = $request->file('file');
-                $extension = $file->getClientOriginalExtension();
-                $fileName = $file->hashName();
-                $folderPath = "public/project-files/" . $extension;
-
-            if (!Storage::exists($folderPath)) {
-                Storage::makeDirectory($folderPath);
-            }
-
-            $file->storeAs($folderPath, $fileName);
-            }
-
             $validated = $validator->validated();
-            $validated['code'] = $this->getCode();
-            $validated['file'] = $fileName;
 
-            dd($validated['file']);
+            if($request->hasFile('file')) {
+                $dateNow = date('Y-m');
+                $fileWithExt = $request->file('file')->getClientOriginalName();
+                $fileWithoutExt = pathinfo($fileWithExt, PATHINFO_FILENAME);
+                $fileExt = $request->file('file')->getClientOriginalExtension();
+                $file = $fileWithoutExt . '_' . $dateNow . '.' . $fileExt;
+
+                $folderPath = "public/project-files/" . $fileExt . '/';
+                if (!Storage::exists($folderPath)) {
+                    Storage::makeDirectory($folderPath);
+                }
+
+                $request->file('file')->storeAs($folderPath, $file);
+                $validated['file'] = $file;
+            }
+
+            do {
+
+                $code = $this->getCode();
+
+            } while (Project::where('code', $code)->first());
+
+            $validated['code'] = $code;
 
             $project = Project::create($validated);
             return response()->json([
