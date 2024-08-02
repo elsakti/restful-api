@@ -73,9 +73,7 @@ class ProjectController extends Controller
             }
 
             do {
-
                 $code = $this->getCode();
-
             } while (Project::where('code', $code)->first());
 
             $validated['code'] = $code;
@@ -117,28 +115,14 @@ class ProjectController extends Controller
 
     public function update(Request $request, string $code)
     {
-        $project = Project::where('code', $code)->first();
-        $oldFileName = $project->file;
-        $oldFileExtension = $oldFileName->getClientOriginalExtension();
-        @dd($oldFileExtension);
-        $oldFilePath = "public/storage/project-files/" . $oldFileExtension . "/" . pathinfo($project->file, PATHINFO_FILENAME);
-        if ($oldFilePath && Storage::exists($oldFilePath)) {
-            Storage::delete($oldFilePath);
-        }
         try {
-
-            if (!$project) {
-                return response()->json([
-                    'message' => 'Project not found',
-                ], 404);
-            }
-
-            $validator = Validator::make($request->all(), [
-                'name' => 'nullable|string|max:255',
+            $validator = Validator::make($request->all(),[
+                'name' => 'required|string|max:255',
+                'file' => 'required|max:10000|mimes:png,jpg,svg,pdf,zip,docx,docs',
                 'description' => 'nullable|string',
                 'start_date' => 'nullable|date',
                 'due_date' => 'nullable|date',
-                'status' => 'nullable|in:pending,in_progress,completed',
+                'status' => 'required|in:pending,in_progress,completed'
             ]);
 
             if ($validator->fails()) {
@@ -148,73 +132,97 @@ class ProjectController extends Controller
                 ], 422);
             }
 
-
             $validated = $validator->validated();
 
-            if ($request->hasFile('file')) {
-                $file = $request->file('file');
-                $extension = $file->getClientOriginalExtension();
-                $fileName = $file->hashName();
-                $filePath = $file->storeAs("public/project-files/$extension", $file->hashName());
+            $upProject = Project::where('code', $code)->first();
 
-                if (!$filePath) {
-                    return response()->json([
-                        'message' => 'Error uploading file.',
-                    ], 500);
+            if (!$upProject) {
+                return response()->json([
+                    'message' => 'Project not found'
+                ], 404);
+            }
+            
+            if ($upProject->file) {
+                $oldFileName = $upProject->file;
+                $oldFileExtension = pathinfo($oldFileName, PATHINFO_EXTENSION);
+                $oldFilePath = "public/project-files/" . $oldFileExtension . '/' . $oldFileName;
+    
+                if (Storage::exists($oldFilePath)) {
+                    Storage::delete($oldFilePath);
                 }
-
-
-                $validated['file'] = $fileName;
             }
 
-            $project->update($validated);
+            if($request->hasFile('file')) {
+                $dateNow = date('Y-m');
+                $fileWithExt = $request->file('file')->getClientOriginalName();
+                $fileWithoutExt = pathinfo($fileWithExt, PATHINFO_FILENAME);
+                $fileExt = $request->file('file')->getClientOriginalExtension();
+                $newFile = $fileWithoutExt . '_' . $dateNow . '.' . $fileExt;
+
+                $folderPath = "public/project-files/" . $fileExt . '/';
+                if (!Storage::exists($folderPath)) {
+                    Storage::makeDirectory($folderPath);
+                }
+
+                $request->file('file')->storeAs($folderPath, $newFile);
+                $validated['file'] = $newFile;
+            }
+
+            $upProject->update($validated);
 
             return response()->json([
-                'message' => 'Project updated successfully!',
-                'data' => $project,
-            ], 200);
+                'message' => 'Project Updated Successfully',
+                'file_url' => Storage::url($folderPath . $newFile)
+            ],200);
 
+            
         } catch (\Throwable $e) {
             Log::error('Project update failed: ' . $e->getMessage());
             return response()->json([
                 'message' => 'An error occurred while updating the project.',
             ], 500);
         }
+
     }
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy($code)
+    public function destroy(String $code)
     {
         try {
-            // Validasi ID proyek
-            $project = Project::where('code', $code)->first();
 
-            if (!$project) {
+            $delProject = Project::where('code', $code)->first();
+
+            if (!$delProject) {
                 return response()->json([
-                    'message' => 'Project not found.',
+                    'message' => 'Project not found'
+                ], 404);
+            }
+            
+            if ($delProject->file) {
+                $oldFileName = $delProject->file;
+            } else {
+                return response()->json([
+                    'message' => 'Project file not found'
                 ], 404);
             }
 
-            // Hapus file terkait jika ada
-            if ($project->file) {
-                dd($project->file);
-                $filePath = "public/project-files/" . pathinfo($project->file, PATHINFO_EXTENSION) . '/' . $project->file;
-                // dd($filePath);
-                if (Storage::exists($filePath)) {
-                    Storage::delete($filePath);
-                }
+            $oldFileExtension = pathinfo($oldFileName, PATHINFO_EXTENSION);
+            $oldFilePath = "public/project-files/" . $oldFileExtension . '/' . $oldFileName;
+
+            if (Storage::exists($oldFilePath)) {
+                Storage::delete($oldFilePath);
             }
 
-            // Hapus entri proyek dari database
-            $project->delete();
+            $delProject->delete();
 
             return response()->json([
-                'message' => 'Project deleted successfully!',
+                'message' => 'Project Deleted Successfully!'
             ], 200);
 
+            
         } catch (\Throwable $e) {
-            Log::error('Project deletion failed: ' . $e->getMessage());
+            Log::error('Project deleteion failed: ' . $e->getMessage());
             return response()->json([
                 'message' => 'An error occurred while deleting the project.',
             ], 500);
